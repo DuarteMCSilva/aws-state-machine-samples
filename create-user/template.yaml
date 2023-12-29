@@ -1,59 +1,95 @@
-Comment: A Hello World example demonstrating various state types of the Amazon States Language
-StartAt: Validate Account
-States:
-  Validate Account:
-    Comment: A Pass state passes its input to its output, without performing work. Pass states are useful when constructing and debugging state machines.
-    Type: Pass
-    Next: Account Valid?
-  Account Valid?:
-    Comment: A Choice state adds branching logic to a state machine. Choice rules can implement 16 different comparison operators, and can be combined using And, Or, and Not
-    Type: Choice
-    Choices:
-      - Variable: $.IsAccountValid
-        BooleanEquals: true
-        Next: 'Yes'
-      - Variable: $.IsAccountValid
-        BooleanEquals: false
-        Next: 'No'
-    Default: 'No'
-  'Yes':
-    Type: Pass
-    Next: Save to DB
-  'No':
-    Type: Pass
-    Next: Send Email Fail
-  Save to DB:
-    Comment: A Wait state delays the state machine from continuing for a specified time.
-    Type: Wait
-    Seconds: 3
-    Next: Parallel State
-  Parallel State:
-    Comment: A Parallel state can be used to create parallel branches of execution in your state machine.
-    Type: Parallel
-    Next: Send Email Success
-    Branches:
-      - StartAt: Saving to DB
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Parameters:
+  TargetLambdaARN:
+    Type: String
+    Default: insert Lambda ARN
+Resources:
+  UserManagementExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - !Sub states.${AWS::Region}.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: StatesExecutionPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Ref TargetLambdaARN
+  UserHandlerStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      RoleArn: !GetAtt UserManagementExecutionRole.Arn
+      Definition:
+        Comment: A Hello World example demonstrating various state types of the Amazon States Language
+        StartAt: Validate Account
         States:
-          Saving to DB:
+          Validate Account:
+            Comment: A Pass state passes its input to its output, without performing work. Pass states are useful when constructing and debugging state machines.
+            Type: Pass
+            Next: Account Valid?
+          Account Valid?:
+            Comment: A Choice state adds branching logic to a state machine. Choice rules can implement 16 different comparison operators, and can be combined using And, Or, and Not
+            Type: Choice
+            Choices:
+              - Variable: $.IsAccountValid
+                BooleanEquals: true
+                Next: 'Yes'
+              - Variable: $.IsAccountValid
+                BooleanEquals: false
+                Next: 'No'
+            Default: 'No'
+          'Yes':
+            Type: Pass
+            Next: Save to DB
+          'No':
+            Type: Pass
+            Next: Send Email Fail
+          Save to DB:
+            Comment: A Wait state delays the state machine from continuing for a specified time.
+            Type: Wait
+            Seconds: 3
+            Next: Parallel State
+          Parallel State:
+            Comment: A Parallel state can be used to create parallel branches of execution in your state machine.
+            Type: Parallel
+            Next: Send Email Success
+            Branches:
+              - StartAt: Saving to DB
+                States:
+                  Saving to DB:
+                    Type: Task
+                    Resource: !Ref TargetLambdaARN
+                    End: true
+              - StartAt: Notify Manager
+                States:
+                  Notify Manager:
+                    Type: Pass
+                    Next: Permission Granted
+                  Permission Granted:
+                    Type: Pass
+                    End: true
+          Send Email Success:
+            Type: Pass
+            Next: User Created!
+          User Created!:
             Type: Pass
             End: true
-      - StartAt: Notify Manager
-        States:
-          Notify Manager:
+          Send Email Fail:
             Type: Pass
-            Next: Permission Granted
-          Permission Granted:
-            Type: Pass
-            End: true
-  Send Email Success: 
-    Type: Pass
-    Next: User Created!
-  User Created!:
-    Type: Pass
-    End: true
-  Send Email Fail: 
-    Type: Pass
-    Next: Fail
-  Fail:
-    Type: Fail
-    End: true
+            Next: Fail
+          Fail:
+            Type: Fail
+            Cause: Something went Wrong
